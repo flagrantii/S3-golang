@@ -1,23 +1,24 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"os"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 )
 
 type App struct {
-	s3Client *s3.S3
+	s3Client *s3.Client
 	bucket   string
 }
 
@@ -42,20 +43,24 @@ func newApp() (*App, error) {
 		return nil, fmt.Errorf("error loading .env file: %w", err)
 	}
 
-	sess, err := session.NewSession(&aws.Config{
-		Region: aws.String(os.Getenv("AWS_REGION")),
-		Credentials: credentials.NewStaticCredentials(
-			os.Getenv("AWS_ACCESS_KEY_ID"),
-			os.Getenv("AWS_SECRET_ACCESS_KEY"),
-			"",
-		),
-	})
+	cfg, err := config.LoadDefaultConfig(context.TODO(),
+		config.WithRegion(os.Getenv("AWS_REGION")),
+		config.WithCredentialsProvider(credentials.StaticCredentialsProvider{
+			Value: aws.Credentials{
+				AccessKeyID:     os.Getenv("AWS_ACCESS_KEY_ID"),
+				SecretAccessKey: os.Getenv("AWS_SECRET_ACCESS_KEY"),
+				Source:          "Env",
+			},
+		}),
+	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create AWS session: %w", err)
+		return nil, fmt.Errorf("failed to load AWS config: %w", err)
 	}
 
+	s3Client := s3.NewFromConfig(cfg)
+
 	return &App{
-		s3Client: s3.New(sess),
+		s3Client: s3Client,
 		bucket:   os.Getenv("S3_BUCKET_NAME"),
 	}, nil
 }
@@ -82,7 +87,7 @@ func (app *App) uploadHandler(c *gin.Context) {
 	}
 	defer file.Close()
 
-	_, err = app.s3Client.PutObject(&s3.PutObjectInput{
+	_, err = app.s3Client.PutObject(context.TODO(), &s3.PutObjectInput{
 		Bucket: aws.String(app.bucket),
 		Key:    aws.String(header.Filename),
 		Body:   file,
@@ -99,7 +104,7 @@ func (app *App) uploadHandler(c *gin.Context) {
 func (app *App) downloadHandler(c *gin.Context) {
 	key := c.Param("key")
 
-	result, err := app.s3Client.GetObject(&s3.GetObjectInput{
+	result, err := app.s3Client.GetObject(context.TODO(), &s3.GetObjectInput{
 		Bucket: aws.String(app.bucket),
 		Key:    aws.String(key),
 	})
@@ -111,7 +116,7 @@ func (app *App) downloadHandler(c *gin.Context) {
 	defer result.Body.Close()
 
 	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", key))
-	c.Header("Content-Type", aws.StringValue(result.ContentType))
+	c.Header("Content-Type", aws.ToString(result.ContentType))
 
 	if _, err = io.Copy(c.Writer, result.Body); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -119,7 +124,7 @@ func (app *App) downloadHandler(c *gin.Context) {
 }
 
 func (app *App) listHandler(c *gin.Context) {
-	resp, err := app.s3Client.ListObjectsV2(&s3.ListObjectsV2Input{
+	resp, err := app.s3Client.ListObjectsV2(context.TODO(), &s3.ListObjectsV2Input{
 		Bucket: aws.String(app.bucket),
 	})
 
@@ -130,7 +135,7 @@ func (app *App) listHandler(c *gin.Context) {
 
 	objects := make([]string, len(resp.Contents))
 	for i, item := range resp.Contents {
-		objects[i] = aws.StringValue(item.Key)
+		objects[i] = aws.ToString(item.Key)
 	}
 
 	c.JSON(http.StatusOK, gin.H{"objects": objects})
