@@ -56,8 +56,15 @@
 
     <div class="section">
         <h2>Download File</h2>
-        <input type="text" id="fileNameInput" placeholder="Enter file name">
+        <input type="text" id="fileNameInputDownload" placeholder="Enter file name">
         <button onclick="downloadFile()">Download</button>
+    </div>
+
+    <div class="section">
+        <h2>Delete File</h2>
+        <input type="text" id="fileNameInputDelete" placeholder="Enter file name">
+        <button onclick="deleteFile()">Delete</button>
+        <div id="deleteResult"></div>
     </div>
 
     <script>
@@ -99,7 +106,7 @@
         }
 
         async function downloadFile() {
-            const fileName = document.getElementById('fileNameInput').value;
+            const fileName = document.getElementById('fileNameInputDownload').value;
             if (!fileName) {
                 alert('Please enter a file name');
                 return;
@@ -121,6 +128,25 @@
             } catch (error) {
                 console.error('Error:', error);
                 alert('Error downloading file');
+            }
+        }
+
+        async function deleteFile() {
+            const fileName = document.getElementById('fileNameInputDelete').value;
+            if (!fileName) {
+                alert('Please enter a file name');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${apiUrl}/delete/${fileName}`, {
+                    method: 'DELETE',
+                });
+                const result = await response.json();
+                document.getElementById('deleteResult').textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                console.error('Error:', error);
+                document.getElementById('deleteResult').textContent = 'Error deleting file';
             }
         }
     </script>

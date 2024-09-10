@@ -75,6 +75,7 @@ func setupRouter(app *App) *gin.Engine {
 	r.POST("/upload", app.uploadHandler)
 	r.GET("/download/:key", app.downloadHandler)
 	r.GET("/list", app.listHandler)
+	r.DELETE("/delete/:key", app.deleteHandler)
 
 	return r
 }
@@ -139,4 +140,20 @@ func (app *App) listHandler(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"objects": objects})
+}
+
+func (app *App) deleteHandler(c *gin.Context) {
+	key := c.Param("key")
+
+	_, err := app.s3Client.DeleteObject(context.TODO(), &s3.DeleteObjectInput{
+		Bucket: aws.String(app.bucket),
+		Key:    aws.String(key),
+	})
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": fmt.Sprintf("File %s deleted successfully", key)})
 }
